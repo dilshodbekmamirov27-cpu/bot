@@ -43,8 +43,14 @@ def save_config(config_data):
         json.dump(config_data, f, ensure_ascii=False, indent=4)
 
 def is_admin(user_id):
-    return user_id in load_config().get("admins", [])
-
+    # Kod ichiga yozilgan asosiy adminlar ro'yxati
+    hardcoded_admins = [6297231747, 5632353347, 8655732501]
+    
+    # JSON fayl ichidagi adminlar ro'yxati
+    file_admins = load_config().get("admins", [])
+    
+    # Agar foydalanuvchi ikkalasidan birida bo'lsa ham TRUE qaytaradi
+    return (user_id in hardcoded_admins) or (user_id in file_admins)
 # =====================================================================
 # 3. TARQATISH FUNKSIYALARI
 # =====================================================================
