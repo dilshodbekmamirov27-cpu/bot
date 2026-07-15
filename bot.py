@@ -30,7 +30,7 @@ def keep_alive():
 # 2. BOT SOZLAMALARI VA MA'LUMOTLARNI SAQLASH (JSON)
 # =====================================================================
 BOT_TOKEN = "8558172277:AAHfiMmxmVcsOhzBbnYdxDp2jbFs0goGkBY"  # @BotFather bergan token
-ADMIN_ID = 6297231747  # Telegram ID raqamingiz
+ADMIN_ID = 6297231747 , 5632353347 , 8655732501  # Telegram ID raqamingiz
 
 bot = telebot.TeleBot(BOT_TOKEN)
 CONFIG_FILE = "config_v2.json"
