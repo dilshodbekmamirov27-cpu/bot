@@ -40,6 +40,7 @@ _config_lock = Lock()
 
 temp_selected_groups = {}
 temp_campaign_data = {}
+temp_manual_id_data = {}
 
 def load_config():
     global _config_cache
@@ -120,7 +121,6 @@ def register_chat(chat):
         if "known_chats" not in c: c["known_chats"] = {}
         chat_id_str = str(chat.id)
         
-        # XATO TUZATILDI: Yopiq guruh nomini Telegram'dan majburlab tortib olish
         title = chat.title
         if not title or title.startswith("-") or chat_id_str not in c["known_chats"]:
             try:
@@ -216,7 +216,6 @@ def send_welcome(message):
 
 @bot.message_handler(commands=["id"])
 def get_group_id_command(message):
-    """XATO TUZATILDI: Guruh nomini aniqlab bazaga chiroyli yozuvchi buyruq"""
     register_chat(message.chat)
     c = load_config()
     guruh_nomi = c.get("known_chats", {}).get(str(message.chat.id), "Noma'lum guruh")
@@ -326,15 +325,18 @@ def generate_group_selection_keyboard(admin_id, campaign_id):
             status_emoji = "✅" if chat_id in selected else "⬜️"
             markup.add(types.InlineKeyboardButton(f"{status_emoji} {title}", callback_data=f"tgl_{campaign_id}_{chat_id}"))
         
-    if not available: return None
     markup.add(
-        types.InlineKeyboardButton("💾 Tanlanganlarni saqlash", callback_data=f"sv_grp_{campaign_id}"),
-        types.InlineKeyboardButton("❌ Bekor qilish", callback_data=f"manage_camp_{campaign_id}")
+        types.InlineKeyboardButton("✍️ ID orqali qo'shish (Yopiq guruhlar uchun)", callback_data=f"manual_add_id_{campaign_id}")
     )
+    
+    if available:
+        markup.add(types.InlineKeyboardButton("💾 Tanlanganlarni saqlash", callback_data=f"sv_grp_{campaign_id}"))
+    
+    markup.add(types.InlineKeyboardButton("❌ Orqaga / Bekor qilish", callback_data=f"manage_camp_{campaign_id}"))
     return markup
 
 # =====================================================================
-# 8. INLINE CALLBACK HANDLERS (XATOLAR TUZATILDI)
+# 8. INLINE CALLBACK HANDLERS
 # =====================================================================
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
@@ -344,27 +346,40 @@ def handle_callbacks(call):
         admin_id = call.from_user.id
         if not is_admin(admin_id): return
 
-        # Rejani boshqarish oynasi
         if call.data.startswith("manage_camp_"):
             camp_id = call.data.replace("manage_camp_", "")
             render_single_campaign(call.message.chat.id, call.message.message_id, camp_id)
 
-        # Bosh ro'yxatga qaytish
         elif call.data == "back_to_main_camp":
             bot.delete_message(call.message.chat.id, call.message.message_id)
             render_campaign_list(call.message.chat.id)
 
-        # XATO TUZATILDI: Reja ichidagi guruh qo'shish tugmasi endi soat menyusini ochmaydi!
         elif call.data.startswith("addg_"):
             camp_id = call.data.replace("addg_", "")
             temp_selected_groups[admin_id] = set()
             markup = generate_group_selection_keyboard(admin_id, camp_id)
-            if markup is None:
-                bot.edit_message_text("Yangi guruh topilmadi.\n\n💡 **Qo'shish tartibi:** Bot a'zo bo'lgan o'sha yopiq guruh ichiga kirib `/id` deb yozing. Keyin bu yerga qayting.", call.message.chat.id, call.message.message_id, reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("⬅️ Orqaga", callback_data=f"manage_camp_{camp_id}")))
-                return
-            bot.edit_message_text("Rejaga qo'shmoqchi bo'lgan guruhlarni belgilang:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+            bot.edit_message_text(
+                "Guruh qo'shish usulini tanlang:\n\n"
+                "1️⃣ Quyidagi ro'yxatdan guruhlarni belgilab saqlang (Inline).\n"
+                "2️⃣ Yoki quyidagi **\"ID orqali qo'shish\"** tugmasini bosib, guruh ID raqamini qo'lda yozing.",
+                call.message.chat.id, call.message.message_id, reply_markup=markup
+            )
 
-        # Guruhni tanlash (Checkbox)
+        # ID orqali qo'lda guruh qo'shish tugmasi bosilganda
+        elif call.data.startswith("manual_add_id_"):
+            camp_id = call.data.replace("manual_add_id_", "")
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            
+            sent = bot.send_message(
+                call.message.chat.id,
+                "✍️ Guruh yoki kanalning **ID raqamini** kiriting:\n\n"
+                "Misol: `-100123456789`\n\n"
+                "⚠️ *Bot ushbu guruhda admin bo'lishi shart! Bot guruh nomini Telegram tizimidan avtomatik qidirib topadi.*",
+                parse_mode="Markdown", reply_markup=get_cancel_keyboard()
+            )
+            temp_manual_id_data[admin_id] = camp_id
+            bot.register_next_step_handler(sent, save_manual_group_id_logic)
+
         elif call.data.startswith("tgl_"):
             _, camp_id, chat_id = call.data.split("_")
             chat_id = int(chat_id)
@@ -374,7 +389,6 @@ def handle_callbacks(call):
             markup = generate_group_selection_keyboard(admin_id, camp_id)
             bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=markup)
 
-        # Tanlangan guruhlarni saqlash
         elif call.data.startswith("sv_grp_"):
             camp_id = call.data.replace("sv_grp_", "")
             selected = temp_selected_groups.get(admin_id, set())
@@ -386,9 +400,8 @@ def handle_callbacks(call):
             temp_selected_groups.pop(admin_id, None)
             restart_scheduler()
             bot.delete_message(call.message.chat.id, call.message.message_id)
-            bot.send_message(call.message.chat.id, "✅ Guruhlar muvaffaqiyatli saqlandi!", reply_markup=get_admin_keyboard())
+            bot.send_message(call.message.chat.id, "✅ Tanlangan guruhlar reja ro'yxatiga qo'shildi!", reply_markup=get_admin_keyboard())
 
-        # Vaqtni o'zgartirish menyusi
         elif call.data.startswith("edit_time_"):
             camp_id = call.data.replace("edit_time_", "")
             markup = types.InlineKeyboardMarkup(row_width=1)
@@ -399,7 +412,6 @@ def handle_callbacks(call):
             )
             bot.edit_message_text("Ushbu reja uchun vaqt rejimini tanlang:", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
-        # Interval tanlash (1, 2, 3 soat...)
         elif call.data.startswith("set_mode_int_"):
             camp_id = call.data.replace("set_mode_int_", "")
             markup = types.InlineKeyboardMarkup(row_width=3)
@@ -409,7 +421,6 @@ def handle_callbacks(call):
             markup.add(types.InlineKeyboardButton("⬅️ Orqaga", callback_data=f"edit_time_{camp_id}"))
             bot.edit_message_text("Xabar necha soatda bir yuborilsin?", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
-        # Tanlangan interval soatini saqlash
         elif call.data.startswith("save_int_"):
             _, _, camp_id, h = call.data.split("_")
             c["campaigns"][camp_id]["mode"] = "interval"
@@ -419,7 +430,6 @@ def handle_callbacks(call):
             bot.delete_message(call.message.chat.id, call.message.message_id)
             bot.send_message(call.message.chat.id, f"✅ Vaqt muvaffaqiyatli o'zgartirildi: Har {h} soatda!", reply_markup=get_admin_keyboard())
 
-        # Qo'lda vaqt kiritish tartibi
         elif call.data.startswith("set_mode_cust_"):
             camp_id = call.data.replace("set_mode_cust_", "")
             bot.delete_message(call.message.chat.id, call.message.message_id)
@@ -431,7 +441,6 @@ def handle_callbacks(call):
             temp_campaign_data[admin_id] = camp_id
             bot.register_next_step_handler(sent, save_camp_times_logic)
 
-        # Guruhni o'chirish oynasi
         elif call.data.startswith("delg_"):
             camp_id = call.data.replace("delg_", "")
             camp = c["campaigns"].get(camp_id)
@@ -441,10 +450,9 @@ def handle_callbacks(call):
             for gid in camp["groups"]:
                 title = known_chats.get(str(gid), f"Guruh {gid}")
                 markup.add(types.InlineKeyboardButton(f"❌ {title}", callback_data=f"rmg_{camp_id}_{gid}"))
-            markup.add(types.InlineKeyboardButton("⬅️ Orqaga", callback_data=f"manage_camp_{camp_id}"))
+            markup.add(types.InlineKeyboardButton("⬅️ Orqaga", callback_data=f"manage_camp_{campaign_id}"))
             bot.edit_message_text("O'chiriladigan guruhni tanlang:", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
-        # Guruhni o'chirishni tasdiqlash
         elif call.data.startswith("rmg_"):
             _, camp_id, gid = call.data.split("_")
             gid = int(gid)
@@ -476,8 +484,67 @@ def handle_callbacks(call):
         print(f"Callback error: {e}")
 
 # =====================================================================
-# 9. YORDAMCHI LOGIKALAR
+# 9. YORDAMCHI LOGIKALAR (ID ORQALI QO'SHISH SHU YERDA)
 # =====================================================================
+def save_manual_group_id_logic(message):
+    try:
+        admin_id = message.from_user.id
+        camp_id = temp_manual_id_data.get(admin_id)
+        if not camp_id: return
+        
+        raw_text = message.text.strip() if message.text else ""
+        if raw_text == "❌ Bekor qilish":
+            bot.send_message(message.chat.id, "Bekor qilindi.", reply_markup=get_admin_keyboard())
+            temp_manual_id_data.pop(admin_id, None)
+            return
+
+        try:
+            # Matnni ID raqamga o'tkazish
+            chat_id = int(raw_text)
+        except ValueError:
+            bot.send_message(message.chat.id, "❌ ID raqam noto'g'ri formatda kiritildi! Faqat sonlardan iborat bo'lishi va yopiq guruhlar uchun `-100` bilan boshlanishi kerak.", reply_markup=get_admin_keyboard())
+            temp_manual_id_data.pop(admin_id, None)
+            return
+
+        # Telegram tizimidan guruhni qidirish va nomini olish
+        try:
+            chat_info = bot.get_chat(chat_id)
+            title = escape_markdown(chat_info.title)
+        except Exception:
+            # Agar bot u guruhda admin bo'lmasa yoki umuman a'zo bo'lmasa xato qaytadi
+            bot.send_message(
+                message.chat.id, 
+                "❌ Guruh topilmadi!\n\n"
+                "**Asosiy sabablar:**\n"
+                "1. Bot ushbu guruhga qo'shilmagan.\n"
+                "2. Bot guruhda admin emas.\n\n"
+                "Iltimos, avval botni guruhga qo'shib admin qiling, keyin qayta urunib ko'ring.", 
+                parse_mode="Markdown", reply_markup=get_admin_keyboard()
+            )
+            temp_manual_id_data.pop(admin_id, None)
+            return
+
+        c = load_config()
+        chat_id_str = str(chat_id)
+        
+        # Guruhni "known_chats" (tanilgan guruhlar) ichiga uning nomi bilan saqlaymiz
+        if "known_chats" not in c: c["known_chats"] = {}
+        c["known_chats"][chat_id_str] = title
+        
+        # Guruhni ushbu kampaniyaga to'g'ridan-to'g'ri qo'shamiz
+        if chat_id not in c["campaigns"][camp_id]["groups"]:
+            c["campaigns"][camp_id]["groups"].append(chat_id)
+            
+        save_config(c)
+        restart_scheduler()
+        temp_manual_id_data.pop(admin_id, None)
+        
+        bot.send_message(message.chat.id, f"✅ **{title}** muvaffaqiyatli aniqlandi va rejaga ulandi!", parse_mode="Markdown", reply_markup=get_admin_keyboard())
+        
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Xatolik yuz berdi: {e}", reply_markup=get_admin_keyboard())
+        temp_manual_id_data.pop(admin_id, None)
+
 def save_camp_times_logic(message):
     try:
         admin_id = message.from_user.id
