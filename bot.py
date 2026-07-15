@@ -226,7 +226,7 @@ def handle_admin_buttons(message):
                 groups_list += f"{i}. `{g_id}`\n"
             
             # Qo'sh tirnoq ichida xavfsiz formatlash bajarildi
-            msg_text = f"**Hozirgi guruhlar ro'yxati:**\n\n{groups_list if groups_list else 'Ro\\'yxat bo\\'sh.'}"
+            msg_text = f"**Hozirgi guruhlar ro'yxati:**\n\n{groups_list if groups_list else 'Royxat bo'sh.'}"
             
             markup = types.InlineKeyboardMarkup()
             markup.add(
