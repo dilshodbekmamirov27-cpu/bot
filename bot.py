@@ -30,7 +30,8 @@ def keep_alive():
 # 2. BOT VA CONFIG SOZLAMALARI
 # =====================================================================
 BOT_TOKEN = "8558172277:AAHfiMmxmVcsOhzBbnYdxDp2jbFs0goGkBY"
-bot = telebot.TeleBot(BOT_TOKEN, parse_mode=None, threaded=True, num_threads=50)
+# Tizim yuklamasini kamaytirish va barqarorlikni oshirish uchun sozlamalar optimallashdi
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode=None, threaded=True, num_threads=30)
 
 CONFIG_FILE = "config_v3.json"
 DEFAULT_ADMINS = [6297231747, 5632353347, 8655732501]
@@ -38,7 +39,6 @@ DEFAULT_ADMINS = [6297231747, 5632353347, 8655732501]
 _config_cache = None
 _config_lock = Lock()
 
-# Vaqtinchalik amallar uchun keshlar
 temp_selected_groups = {}
 temp_campaign_data = {}
 
@@ -68,7 +68,7 @@ def load_config():
             "campaigns": {
                 "Plan_1": {
                     "name": "Har soatlik guruhlar",
-                    "mode": "interval", # interval yoki custom
+                    "mode": "interval",
                     "interval_hours": 1,
                     "custom_times": [],
                     "groups": []
@@ -103,8 +103,10 @@ def save_config(config_data):
 
 def is_admin(user_id):
     hardcoded_admins = {6297231747, 5632353347, 8655732501}
-    try: file_admins = set(load_config().get("admins", []))
-    except Exception: file_admins = set()
+    try: 
+        file_admins = set(load_config().get("admins", []))
+    except Exception: 
+        file_admins = set()
     return (user_id in hardcoded_admins) or (user_id in file_admins)
 
 def escape_markdown(text):
@@ -123,7 +125,7 @@ def register_chat(chat):
             save_config(c)
 
 # =====================================================================
-# 3. MULTI-KAMPANIYALI SCHEDULER TIZIMI
+# 3. ADVANCED SCHEDULER TIZIMI
 # =====================================================================
 scheduler = BackgroundScheduler(daemon=True)
 
@@ -140,7 +142,7 @@ def send_campaign_ad(campaign_id):
                         bot.send_photo(group_id, current_config["photo_id"], caption=current_config.get("text", ""))
                     else:
                         bot.send_message(group_id, current_config.get("text", "Xabar matni kiritilmagan."))
-                    time.sleep(1.5)
+                    time.sleep(1.5) # Anti-flood himoya delay
                 except ApiTelegramException as e:
                     print(f"API xatosi guruh {group_id}: {e.description}")
                 except Exception as e:
@@ -148,7 +150,7 @@ def send_campaign_ad(campaign_id):
         except Exception as e:
             print(f"Tarqatish xizmatida xatolik: {e}")
             
-    Thread(target=worker).start()
+    Thread(target=worker, daemon=True).start()
 
 def restart_scheduler():
     try:
@@ -238,14 +240,7 @@ def handle_admin_buttons(message):
             bot.register_next_step_handler(sent, save_new_message)
             
         elif text == "⚙️ Reklama rejalarini boshqarish":
-            markup = types.InlineKeyboardMarkup(row_width=1)
-            campaigns = c.get("campaigns", {})
-            for camp_id, camp in campaigns.items():
-                g_count = len(camp.get("groups", []))
-                mode_txt = f"({camp.get('interval_hours')} soatda bir)" if camp.get("mode") == "interval" else f"({len(camp.get('custom_times', []))} marta qo'lda)"
-                markup.add(types.InlineKeyboardButton(f"📂 {camp['name']} [{g_count} guruh] {mode_txt}", callback_data=f"manage_camp_{camp_id}"))
-            
-            bot.send_message(message.chat.id, "Sizning reklama rejalaringiz ro'yxati. Sozlash uchun reja ustiga bosing:", reply_markup=markup)
+            render_campaign_list(message.chat.id)
             
         elif text == "🚀 Hozir hammasiga yo'llash":
             bot.send_message(message.chat.id, "Barcha rejalardagi guruhlarga xabar yuborilmoqda...")
@@ -255,6 +250,40 @@ def handle_admin_buttons(message):
             
     except Exception as e:
         bot.send_message(message.chat.id, f"Xatolik yuz berdi: {e}")
+
+def render_campaign_list(chat_id):
+    c = load_config()
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    campaigns = c.get("campaigns", {})
+    for camp_id, camp in campaigns.items():
+        g_count = len(camp.get("groups", []))
+        mode_txt = f"({camp.get('interval_hours')} soatda bir)" if camp.get("mode") == "interval" else f"({len(camp.get('custom_times', []))} marta qo'lda)"
+        markup.add(types.InlineKeyboardButton(f"📂 {camp['name']} [{g_count} guruh] {mode_txt}", callback_data=f"manage_camp_{camp_id}"))
+    bot.send_message(chat_id, "Sizning reklama rejalaringiz ro'yxati. Sozlash uchun reja ustiga bosing:", reply_markup=markup)
+
+def render_single_campaign(chat_id, message_id, campaign_id):
+    c = load_config()
+    camp = c["campaigns"].get(campaign_id)
+    if not camp: return
+    
+    known_chats = c.get("known_chats", {})
+    g_list = ""
+    for i, gid in enumerate(camp.get("groups", []), 1):
+        title = known_chats.get(str(gid), f"Guruh {gid}")
+        g_list += f"{i}. {title}\n"
+    if not g_list: g_list = "Guruhlar ulanmagan.\n"
+    
+    settings_txt = f"⏱ Har {camp.get('interval_hours')} soatda" if camp.get("mode") == "interval" else f"⏰ Belgilangan vaqtlar: {', '.join(camp.get('custom_times', []))}"
+    msg = f"📋 **Reja nomi:** {camp['name']}\n⚙️ **Turi:** {settings_txt}\n\n**Ushbu rejaga ulangan guruhlar:**\n{g_list}"
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton("➕ Guruhlar qo'shish", callback_data=f"addg_{campaign_id}"),
+        types.InlineKeyboardButton("➖ Guruhni o'chirish", callback_data=f"delg_{campaign_id}"),
+        types.InlineKeyboardButton("⚙️ Vaqt/Interval sozlamasini o'zgartirish", callback_data=f"edit_time_{campaign_id}"),
+        types.InlineKeyboardButton("⬅️ Orqaga", callback_data="back_to_main_camp")
+    )
+    bot.edit_message_text(msg, chat_id, message_id, reply_markup=markup, parse_mode="Markdown")
 
 # =====================================================================
 # 7. MULTI-SELECT GURUH JONLI INTERFEYSI (KAMPANIYA UCHUN)
@@ -285,11 +314,12 @@ def generate_group_selection_keyboard(admin_id, campaign_id):
     return markup
 
 # =====================================================================
-# 8. INLINE CALLBACK HANDLERS
+# 8. INLINE CALLBACK HANDLERS (Tuzatilgan va tezkor blok)
 # =====================================================================
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
     try:
+        bot.answer_callback_query(call.id) # Tugma qotib qolmasligi uchun darhol javob qaytaramiz
         c = load_config()
         admin_id = call.from_user.id
         if not is_admin(admin_id): return
@@ -297,45 +327,18 @@ def handle_callbacks(call):
         # --- REJANI BOSHQARISH MENYUSI ---
         if call.data.startswith("manage_camp_"):
             camp_id = call.data.replace("manage_camp_", "")
-            camp = c["campaigns"].get(camp_id)
-            if not camp: return
-            
-            known_chats = c.get("known_chats", {})
-            g_list = ""
-            for i, gid in enumerate(camp.get("groups", []), 1):
-                title = known_chats.get(str(gid), f"Guruh {gid}")
-                g_list += f"{i}. {title}\n"
-            if not g_list: g_list = "Guruhlar ulanmagan.\n"
-            
-            settings_txt = f"⏱ Har {camp.get('interval_hours')} soatda" if camp.get("mode") == "interval" else f"⏰ Belgilangan vaqtlar: {', '.join(camp.get('custom_times', []))}"
-            
-            msg = f"📋 **Reja nomi:** {camp['name']}\n⚙️ **Turi:** {settings_txt}\n\n**Ushbu rejaga ulangan guruhlar:**\n{g_list}"
-            
-            markup = types.InlineKeyboardMarkup(row_width=1)
-            markup.add(
-                types.InlineKeyboardButton("➕ Guruhlar qo'shish", callback_data=f"addg_{camp_id}"),
-                types.InlineKeyboardButton("➖ Guruhni o'chirish", callback_data=f"delg_{camp_id}"),
-                types.InlineKeyboardButton("⚙️ Vaqt/Interval sozlamasini o'zgartirish", callback_data=f"edit_time_{camp_id}"),
-                types.InlineKeyboardButton("⬅️ Orqaga", callback_data="back_to_main_camp")
-            )
-            bot.edit_message_text(msg, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
+            render_single_campaign(call.message.chat.id, call.message.message_id, camp_id)
 
         elif call.data == "back_to_main_camp":
             bot.delete_message(call.message.chat.id, call.message.message_id)
-            # Rejalar ro'yxatini qayta chiqarish
-            markup = types.InlineKeyboardMarkup(row_width=1)
-            for camp_id, camp in c.get("campaigns", {}).items():
-                g_count = len(camp.get("groups", []))
-                mode_txt = f"({camp.get('interval_hours')} soatda bir)" if camp.get("mode") == "interval" else f"({len(camp.get('custom_times', []))} marta qo'lda)"
-                markup.add(types.InlineKeyboardButton(f"📂 {camp['name']} [{g_count} guruh] {mode_txt}", callback_data=f"manage_camp_{camp_id}"))
-            bot.send_message(call.message.chat.id, "Sizning reklama rejalaringiz ro'yxati:", reply_markup=markup)
+            render_campaign_list(call.message.chat.id)
 
         # --- REJA VAQTLARINI TARKIBLASH ---
         elif call.data.startswith("edit_time_"):
             camp_id = call.data.replace("edit_time_", "")
             markup = types.InlineKeyboardMarkup(row_width=1)
             markup.add(
-                types.InlineKeyboardButton("⏱ Har soatda bir yuborish (Interval)", callback_data=f"set_mode_int_{camp_id}"),
+                types.InlineKeyboardButton("⏱ Har soatda bir (Interval)", callback_data=f"set_mode_int_{camp_id}"),
                 types.InlineKeyboardButton("⏰ Kuniga ma'lum soatlarda (Qo'lda kiritish)", callback_data=f"set_mode_cust_{camp_id}"),
                 types.InlineKeyboardButton("⬅️ Orqaga", callback_data=f"manage_camp_{camp_id}")
             )
@@ -355,17 +358,15 @@ def handle_callbacks(call):
             c["campaigns"][camp_id]["interval_hours"] = int(h)
             save_config(c)
             restart_scheduler()
-            bot.answer_callback_query(call.id, "Interval saqlandi!")
-            # Qaytarish
-            bot.data = f"manage_camp_{camp_id}"
-            handle_callbacks(call)
+            # Cheksiz siklni yo'qotish uchun to'g'ridan-to'g'ri render funksiyasi ishlatildi
+            render_single_campaign(call.message.chat.id, call.message.message_id, camp_id)
 
         elif call.data.startswith("set_mode_cust_"):
             camp_id = call.data.replace("set_mode_cust_", "")
             bot.delete_message(call.message.chat.id, call.message.message_id)
             sent = bot.send_message(
                 call.message.chat.id,
-                f"Ushbu reja guruhlari uchun vaqtlarni kiriting.\nFormat: `HH:MM` (vergul bilan ajrating).\n\nMisol: `09:00, 13:30, 18:00, 22:15`",
+                f"Ushbu reja guruhlari uchun vaqtlarni kiriting.\nFormat: `HH:MM` (vergul bilan ajrating).\n\nMisol: `09:00, 13:30, 18:00`",
                 parse_mode="Markdown", reply_markup=get_cancel_keyboard()
             )
             temp_campaign_data[admin_id] = camp_id
@@ -393,16 +394,13 @@ def handle_callbacks(call):
         elif call.data.startswith("sv_grp_"):
             camp_id = call.data.replace("sv_grp_", "")
             selected = temp_selected_groups.get(admin_id, set())
-            if not selected:
-                bot.answer_callback_query(call.id, "Hech bo'lmasa 1 ta guruh tanlang!", show_alert=True)
-                return
+            if not selected: return
             for gid in selected:
                 if gid not in c["campaigns"][camp_id]["groups"]:
                     c["campaigns"][camp_id]["groups"].append(gid)
             save_config(c)
             temp_selected_groups.pop(admin_id, None)
             restart_scheduler()
-            bot.answer_callback_query(call.id, "Guruhlar saqlandi!")
             bot.delete_message(call.message.chat.id, call.message.message_id)
             bot.send_message(call.message.chat.id, "✅ Guruhlar reja guruhiga muvaffaqiyatli bog'landi!", reply_markup=get_admin_keyboard())
 
@@ -426,7 +424,6 @@ def handle_callbacks(call):
                 c["campaigns"][camp_id]["groups"].remove(gid)
                 save_config(c)
                 restart_scheduler()
-            bot.answer_callback_query(call.id, "Guruh o'chirildi")
             bot.delete_message(call.message.chat.id, call.message.message_id)
             bot.send_message(call.message.chat.id, "Guruh muvaffaqiyatli o'chirildi.", reply_markup=get_admin_keyboard())
 
@@ -446,10 +443,11 @@ def handle_callbacks(call):
                 save_config(c)
                 bot.send_message(call.message.chat.id, "Admin o'chirildi.", reply_markup=get_admin_keyboard())
 
-    except Exception as e: print(f"Callback error: {e}")
+    except Exception as e: 
+        print(f"Callback error: {e}")
 
 # =====================================================================
-# 9. REJA VAQTLARINI SAQLASH VA NEXT STEP LOGIKALARI
+# 9. LOGIKALARI VA TEKSHIRUVLAR
 # =====================================================================
 def save_camp_times_logic(message):
     try:
