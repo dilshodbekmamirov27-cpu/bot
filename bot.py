@@ -31,15 +31,13 @@ def keep_alive():
 # =====================================================================
 BOT_TOKEN = "8558172277:AAHfiMmxmVcsOhzBbnYdxDp2jbFs0goGkBY"
 
-# threaded=True va num_threads=50 botning parallel va maksimal tezlikda ishlashini ta'minlaydi
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode=None, threaded=True, num_threads=50)
 
 CONFIG_FILE = "config_v2.json"
 DEFAULT_ADMINS = [6297231747, 5632353347, 8655732501]
 
-# Kesh tizimi (Tezlikni oshirish va disk yuklamasini kamaytirish uchun)
 _config_cache = None
-_config_lock = Lock()  # Ko'p oqimda fayl buzilishini oldini olish uchun
+_config_lock = Lock()
 
 def load_config():
     global _config_cache
@@ -60,7 +58,6 @@ def load_config():
             except Exception:
                 pass
         
-        # Fayl bo'lmasa yoki xato bo'lsa default yaratish
         default_config = {
             "admins": DEFAULT_ADMINS,
             "type": "text", 
@@ -89,7 +86,7 @@ def save_config(config_data):
             print(f"Config saqlashda xatolik: {e}")
 
 def is_admin(user_id):
-    hardcoded_admins = {6297231747, 5632353347, 8655732501} # Tezkor qidiruv uchun Set formatida
+    hardcoded_admins = {6297231747, 5632353347, 8655732501}
     try:
         file_admins = set(load_config().get("admins", []))
     except Exception:
@@ -102,7 +99,6 @@ def is_admin(user_id):
 scheduler = BackgroundScheduler(daemon=True)
 
 def send_hourly_reminder():
-    # Asosiy oqimni bloklamaslik uchun tarqatishni alohida thread ichida bajaramiz
     def worker():
         try:
             current_config = load_config()
@@ -119,7 +115,7 @@ def send_hourly_reminder():
                         bot.send_photo(group_id, current_config["photo_id"], caption=current_config.get("text", ""))
                     else:
                         bot.send_message(group_id, current_config.get("text", "Xabar matni kiritilmagan."))
-                    time.sleep(1.0)  # Telegram flood limitlaridan qochish uchun optimal tezlik
+                    time.sleep(1.0)
                 except ApiTelegramException as e:
                     print(f"Telegram API xatosi guruh {group_id}: {e.description}")
                 except Exception as e:
@@ -143,7 +139,7 @@ scheduler.start()
 restart_scheduler()
 
 # =====================================================================
-# 4. ADMIN PANEL KLAVIATURASI
+# 4. ADMIN PANEL KLAVIATURALARI
 # =====================================================================
 def get_admin_keyboard():
     c = load_config()
@@ -156,6 +152,12 @@ def get_admin_keyboard():
     
     keyboard.add(types.KeyboardButton("👥 Guruhlarni boshqarish"), types.KeyboardButton("🔐 Adminlarni boshqarish"))
     keyboard.add(types.KeyboardButton("🚀 Hozir yo'llash (Test)"))
+    return keyboard
+
+# Yangi kiritish jarayonlarini bekor qilish tugmasi
+def get_cancel_keyboard():
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.add(types.KeyboardButton("❌ Bekor qilish"))
     return keyboard
 
 # =====================================================================
@@ -199,7 +201,11 @@ def handle_admin_buttons(message):
                 bot.send_message(message.chat.id, c.get("text", "Xabar matni bo'sh!"))
             
         elif text == "✍️ Yangi xabar yozish":
-            sent = bot.send_message(message.chat.id, "Menga yangi matn kiriting yoki rasm yuboring (rasm tagiga ham matn yozishingiz mumkin):")
+            sent = bot.send_message(
+                message.chat.id, 
+                "Menga yangi matn kiriting yoki rasm yuboring (bekor qilish uchun pastdagi tugmani bosing):", 
+                reply_markup=get_cancel_keyboard()
+            )
             bot.register_next_step_handler(sent, save_new_message)
             
         elif text.startswith("🟢 Status") or text.startswith("🔴 Status"):
@@ -225,7 +231,6 @@ def handle_admin_buttons(message):
             for i, g_id in enumerate(groups, 1):
                 groups_list += f"{i}. `{g_id}`\n"
             
-            # SyntaxError keltirib chiqargan f-string soddalashtirildi:
             if groups_list:
                 msg_text = f"**Hozirgi guruhlar ro'yxati:**\n\n{groups_list}"
             else:
@@ -259,7 +264,11 @@ def handle_callbacks(call):
 
         # --- ADMIN BOSHQARUVI ---
         if call.data == "add_admin":
-            sent = bot.send_message(call.message.chat.id, "Yangi adminning Telegram ID raqamini kiriting (masalan: `6297231747`):", parse_mode="Markdown")
+            sent = bot.send_message(
+                call.message.chat.id, 
+                "Yangi adminning Telegram ID raqamini kiriting:", 
+                reply_markup=get_cancel_keyboard()
+            )
             bot.register_next_step_handler(sent, add_admin_logic)
             bot.answer_callback_query(call.id)
             
@@ -285,7 +294,11 @@ def handle_callbacks(call):
 
         # --- GURUHLAR BOSHQARUVI ---
         elif call.data == "group_add":
-            sent = bot.send_message(call.message.chat.id, "Guruh ID raqamini kiriting (masalan: `-10012345678`):", parse_mode="Markdown")
+            sent = bot.send_message(
+                call.message.chat.id, 
+                "Guruh ID raqamini kiriting (masalan: `-10012345678`):", 
+                reply_markup=get_cancel_keyboard()
+            )
             bot.register_next_step_handler(sent, add_group_logic)
             bot.answer_callback_query(call.id)
             
@@ -323,13 +336,18 @@ def handle_callbacks(call):
         print(f"Callback xatosi: {e}")
 
 # =====================================================================
-# 8. NEXT STEP LOGIKA (XATOLIKLARSIZ)
+# 8. NEXT STEP LOGIKA (BEKOR QILISH TUGMASI BILAN)
 # =====================================================================
 def add_admin_logic(message):
     try:
-        raw_text = message.text.strip()
-        new_id = int(raw_text)
+        raw_text = message.text.strip() if message.text else ""
         
+        # Bekor qilish bosilsa
+        if raw_text == "❌ Bekor qilish":
+            bot.send_message(message.chat.id, "Admin qo'shish bekor qilindi.", reply_markup=get_admin_keyboard())
+            return
+
+        new_id = int(raw_text)
         c = load_config()
         if new_id not in c["admins"]:
             c["admins"].append(new_id)
@@ -338,14 +356,19 @@ def add_admin_logic(message):
         else:
             bot.send_message(message.chat.id, "⚠️ Ushbu ID foydalanuvchisi allaqachon adminlar ro'yxatida bor.", reply_markup=get_admin_keyboard())
     except ValueError:
-        bot.send_message(message.chat.id, "❌ Xatolik! Admin ID faqat raqamlardan iborat bo'lishi lozim. Qaytadan urinib ko'ring.", reply_markup=get_admin_keyboard())
+        bot.send_message(message.chat.id, "❌ Xatolik! Admin ID faqat raqamlardan iborat bo'lishi lozim. Jarayon bekor qilindi.", reply_markup=get_admin_keyboard())
     except Exception as e:
         bot.send_message(message.chat.id, f"Xatolik yuz berdi: {e}", reply_markup=get_admin_keyboard())
 
 def add_group_logic(message):
     try:
-        raw_text = message.text.strip()
+        raw_text = message.text.strip() if message.text else ""
         
+        # Bekor qilish bosilsa
+        if raw_text == "❌ Bekor qilish":
+            bot.send_message(message.chat.id, "Guruh qo'shish bekor qilindi.", reply_markup=get_admin_keyboard())
+            return
+
         # ID-ni guruh formatiga keltirish
         if not raw_text.startswith("-"):
             if raw_text.startswith("100"):
@@ -363,12 +386,19 @@ def add_group_logic(message):
         else:
             bot.send_message(message.chat.id, "⚠️ Ushbu guruh ID raqami allaqachon bazada bor.", reply_markup=get_admin_keyboard())
     except ValueError:
-        bot.send_message(message.chat.id, "❌ Xato ID formati! Iltimos, faqat ID sonini kiriting (masalan: -100XXXXXXXXX).", reply_markup=get_admin_keyboard())
+        bot.send_message(message.chat.id, "❌ Xato ID formati! Guruh qo'shish bekor qilindi.", reply_markup=get_admin_keyboard())
     except Exception as e:
         bot.send_message(message.chat.id, f"Xatolik: {e}", reply_markup=get_admin_keyboard())
 
 def save_new_message(message):
     try:
+        raw_text = message.text.strip() if message.text else ""
+        
+        # Bekor qilish bosilsa
+        if raw_text == "❌ Bekor qilish":
+            bot.send_message(message.chat.id, "Yangi xabar yozish bekor qilindi.", reply_markup=get_admin_keyboard())
+            return
+
         c = load_config()
         if message.content_type == "photo":
             c["type"] = "photo"
@@ -379,7 +409,7 @@ def save_new_message(message):
             c["text"] = message.text
             c["photo_id"] = None
         else:
-            bot.send_message(message.chat.id, "❌ Faqat matn yoki rasm qabul qilinadi. Qaytadan urinib ko'ring.", reply_markup=get_admin_keyboard())
+            bot.send_message(message.chat.id, "❌ Faqat matn yoki rasm qabul qilinadi. Jarayon bekor qilindi.", reply_markup=get_admin_keyboard())
             return
             
         save_config(c)
@@ -388,7 +418,7 @@ def save_new_message(message):
         bot.send_message(message.chat.id, f"Xabarni saqlashda kutilmagan xatolik: {e}", reply_markup=get_admin_keyboard())
 
 # =====================================================================
-# 9. RUN ENGINE (OPTIMAL SENSOR TIZIMI)
+# 9. RUN ENGINE
 # =====================================================================
 if __name__ == "__main__":
     keep_alive()
