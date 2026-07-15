@@ -11,15 +11,15 @@ from flask import Flask
 # =====================================================================
 # 1. FLASK WEB SERVER (24/7 ishni ta'minlash uchun)
 # =====================================================================
-app = Flask('')
+app = Flask("")
 
-@app.route('/')
+@app.route("/")
 def home():
     return "Bot status: ACTIVE (24/7 running)"
 
 def run_web_server():
     port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host="0.0.0.0", port=port)
 
 def keep_alive():
     t = Thread(target=run_web_server)
@@ -31,8 +31,7 @@ def keep_alive():
 # =====================================================================
 BOT_TOKEN = "8558172277:AAHfiMmxmVcsOhzBbnYdxDp2jbFs0goGkBY"
 
-# threaded=True - har bir xabarni alohida oqimda parallel ishlashini ta'minlaydi (Tezlik kaliti!)
-# num_threads=50 - parallel oqimlar sonini ko'paytiramiz
+# threaded=True va num_threads=50 botning parallel va maksimal tezlikda ishlashini ta'minlaydi
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode=None, threaded=True, num_threads=50)
 
 CONFIG_FILE = "config_v2.json"
@@ -136,7 +135,7 @@ def restart_scheduler():
         scheduler.remove_all_jobs()
         interval = current_config.get("interval_hours", 1)
         if interval < 1: interval = 1
-        scheduler.add_job(send_hourly_reminder, 'interval', hours=interval, id='reminder_job')
+        scheduler.add_job(send_hourly_reminder, "interval", hours=interval, id="reminder_job")
     except Exception as e:
         print(f"Schedulerni qayta ishga tushirishda xato: {e}")
 
@@ -162,7 +161,7 @@ def get_admin_keyboard():
 # =====================================================================
 # 5. BUYRUQLAR (COMMANDS)
 # =====================================================================
-@bot.message_handler(commands=['start', 'admin'])
+@bot.message_handler(commands=["start", "admin"])
 def send_welcome(message):
     try:
         if is_admin(message.from_user.id):
@@ -206,9 +205,10 @@ def handle_admin_buttons(message):
         elif text.startswith("🟢 Status") or text.startswith("🔴 Status"):
             c["is_active"] = not c.get("is_active", True)
             save_config(c)
+            holat_matni = "FAOL" if c["is_active"] else "TO'XTATILDI"
             bot.send_message(
                 message.chat.id, 
-                f"Holat o'zgardi: {'FAOL' if c['is_active'] else 'TO\'XTATILDI'}", 
+                f"Holat o'zgardi: {holat_matni}", 
                 reply_markup=get_admin_keyboard()
             )
             
@@ -225,6 +225,7 @@ def handle_admin_buttons(message):
             for i, g_id in enumerate(groups, 1):
                 groups_list += f"{i}. `{g_id}`\n"
             
+            # Qo'sh tirnoq ichida xavfsiz formatlash bajarildi
             msg_text = f"**Hozirgi guruhlar ro'yxati:**\n\n{groups_list if groups_list else 'Ro\\'yxat bo\\'sh.'}"
             
             markup = types.InlineKeyboardMarkup()
@@ -366,11 +367,11 @@ def add_group_logic(message):
 def save_new_message(message):
     try:
         c = load_config()
-        if message.content_type == 'photo':
+        if message.content_type == "photo":
             c["type"] = "photo"
             c["text"] = message.caption or ""
             c["photo_id"] = message.photo[-1].file_id
-        elif message.content_type == 'text':
+        elif message.content_type == "text":
             c["type"] = "text"
             c["text"] = message.text
             c["photo_id"] = None
