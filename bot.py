@@ -225,8 +225,11 @@ def handle_admin_buttons(message):
             for i, g_id in enumerate(groups, 1):
                 groups_list += f"{i}. `{g_id}`\n"
             
-            # Qo'sh tirnoq ichida xavfsiz formatlash bajarildi
-            msg_text = f"**Hozirgi guruhlar ro'yxati:**\n\n{groups_list if groups_list else 'Royxat bo'sh.'}"
+            # SyntaxError keltirib chiqargan f-string soddalashtirildi:
+            if groups_list:
+                msg_text = f"**Hozirgi guruhlar ro'yxati:**\n\n{groups_list}"
+            else:
+                msg_text = "**Hozirgi guruhlar ro'yxati:**\n\nRo'yxat bo'sh."
             
             markup = types.InlineKeyboardMarkup()
             markup.add(
@@ -390,5 +393,4 @@ def save_new_message(message):
 if __name__ == "__main__":
     keep_alive()
     print("Maksimal tezlikdagi oqim tizimi ishga tushdi...")
-    # long_polling_timeout va timeout ko'rsatkichlari Telegram API bilan tezroq aloqani ta'minlaydi
     bot.infinity_polling(timeout=20, long_polling_timeout=10)
