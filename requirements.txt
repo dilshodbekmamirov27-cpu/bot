@@ -1,6 +1,5 @@
-pybot
 pyrogram
-pytgcalls
+tgcrypto
 apscheduler
 flask
-telebot
+pyTelegramBotAPI
