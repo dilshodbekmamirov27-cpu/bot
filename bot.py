@@ -10,6 +10,14 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.executors.pool import ThreadPoolExecutor
 from flask import Flask
 
+# =================================================================
+# XATONI TO'G'RILOVCHI QISM (Python 3.14 va Pyrogram kelishmovchiligi)
+# =================================================================
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
 # Akkaunt ulanishi uchun Pyrogram kutubxonasi
 from pyrogram import Client
 from pyrogram.errors import SessionPasswordNeeded, PhoneCodeInvalid, PhoneCodeExpired
@@ -17,12 +25,12 @@ from pyrogram.errors import SessionPasswordNeeded, PhoneCodeInvalid, PhoneCodeEx
 # =====================================================================
 # 1. ASOSIY SOZLAMALAR (BU YERGA REAL MA'LUMOTLARINGIZNI YOZING)
 # =====================================================================
-# my.telegram.org saytidan olinadigan standart API kalitlar. 
-# Buni o'zgartirmasangiz ham ko'pincha ishlaydi, lekin o'zingiznikini qo'yish tavsiya etiladi.
 API_ID = 26543189  
 API_HASH = "8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d"
 
 BOT_TOKEN = "8558172277:AAHfiMmxmVcsOhzBbnYdxDp2jbFs0goGkBY"
+
+# ... QOGAN KOD SHUNDAYLIGICHA QOLADI ...
 CONFIG_FILE = "config_v3.json"
 DEFAULT_ADMINS = [6297231747, 5632353347, 8655732501]
 
