@@ -1,4 +1,6 @@
-pyTelegramBotAPI
-APScheduler
-Flask
-gunicorn
+pybot
+pyrogram
+pytgcalls
+apscheduler
+flask
+telebot
