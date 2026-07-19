@@ -37,12 +37,13 @@ DEFAULT_ADMINS = [6297231747, 5632353347, 8655732501]
 # =====================================================================
 # 2. FLASK WEB SERVER (24/7 UCHUN)
 # =====================================================================
-app = Flask("")
-@app.route("/")
-def home(): return "ACTIVE"
+# Flask serveri qismini shunday tahrirlang:
+def run_web_server():
+    port = int(os.environ.get("PORT", 8080)) # Render'dan portni olish
+    app.run(host="0.0.0.0", port=port) # Portni aniq ko'rsatish
 
 def keep_alive():
-    t = Thread(target=lambda: app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)), debug=False, use_reloader=False))
+    t = Thread(target=run_web_server)
     t.daemon = True
     t.start()
 
