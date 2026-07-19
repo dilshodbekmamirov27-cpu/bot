@@ -1,5 +1,4 @@
-pyrogram
-tgcrypto
-apscheduler
-flask
 pyTelegramBotAPI
+APScheduler
+Flask
+gunicorn
